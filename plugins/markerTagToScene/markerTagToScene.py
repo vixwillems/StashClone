@@ -4,6 +4,8 @@ import time
 import requests
 import log
 
+ALL_TAGS = False
+
 START_TIME = time.time()
 FRAGMENT = json.loads(sys.stdin.read())
 
@@ -104,29 +106,34 @@ def graphql_setSceneTags(sceneID, tagIDs: list):
 def main():
 
     CONTEXT = FRAGMENT['args']['hookContext']['input']
-
-    primaryTagID = CONTEXT['primary_tag_id']
     sceneID = CONTEXT['scene_id']
+    if not sceneID:
+        return
+    
+    prevSceneTags = graphql_getSceneTags(sceneID)
+    prevSceneTagIDs = []
+    for prevSceneTag in prevSceneTags:
+        prevSceneTagIDs.append(prevSceneTag['id'])
 
-    if not primaryTagID or not sceneID:
+    nextTagIDs = []
+
+    # Primary tag
+    primaryTagID = CONTEXT['primary_tag_id']
+    if primaryTagID is not None:
+        nextTagIDs = set(prevSceneTagIDs + [primaryTagID])
+
+    # All tags
+    if ALL_TAGS:
+        tagIDs = CONTEXT['tag_ids']
+        if tagIDs is not None:
+            nextTagIDs = set(set(nextTagIDs) | set(prevSceneTagIDs) | set(tagIDs))
+
+    if len(prevSceneTagIDs) >= len(nextTagIDs):
+        log.LogDebug("No new tag added")
         return
 
-    sceneTags = graphql_getSceneTags(sceneID)
-    tagIDs = []
-
-    for sceneTags in sceneTags:
-        tagID = sceneTags['id'];
-        if tagID == primaryTagID:
-            log.LogDebug("Primary tag already exists on scene")
-            return
-
-        tagIDs.append(tagID);
-
-    # set the tag on the scene if not present
-    tagIDs.append(primaryTagID);
-
-    graphql_setSceneTags(sceneID, tagIDs);
-    log.LogDebug("Added primary tag " + primaryTagID + " to scene " + sceneID)
+    graphql_setSceneTags(sceneID, list(nextTagIDs))
+    log.LogDebug("Added new tags to scene " + sceneID)
 
 
 
